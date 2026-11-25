@@ -1,4 +1,32 @@
 {
+  "adminUi": {
+    "acl": [
+      {
+        "id": "rotate_history_key",
+        "label": "Rotate Welcome History Key"
+      }
+    ],
+    "customer": {
+      "massActions": [
+        {
+          "aclProtected": true,
+          "description": "Inspect delivery attempts for one customer.",
+          "id": "view-welcome-history",
+          "label": "Welcome delivery history",
+          "path": "#/welcome-history",
+          "selectionLimit": 1,
+          "type": "view"
+        }
+      ]
+    },
+    "menu": {
+      "aclProtected": true,
+      "description": "Rotate the welcome history lookup key without losing older delivery attempts.",
+      "id": "customer_welcome_rotation",
+      "label": "Welcome history key rotation",
+      "parentMenu": "system"
+    }
+  },
   "businessConfig": {
     "schema": [
       {
@@ -6,6 +34,18 @@
         "label": "Welcome Service Base URL",
         "name": "welcome_service_base_url",
         "type": "url"
+      },
+      {
+        "default": "",
+        "label": "Customer History Key (do not edit; rotate using the app menu)",
+        "name": "customer_key_pepper",
+        "type": "password"
+      },
+      {
+        "default": "",
+        "label": "History Key Versions (managed by the app; do not edit)",
+        "name": "customer_key_versions",
+        "type": "password"
       }
     ]
   },
@@ -16,6 +56,9 @@
           {
             "description": "Checks whether a saved customer is newly created.",
             "fields": [
+              {
+                "name": "id"
+              },
               {
                 "name": "email"
               },
@@ -37,6 +80,15 @@
           "description": "Receives customer save events for welcome notifications.",
           "label": "Customer Welcome Events"
         }
+      }
+    ]
+  },
+  "installation": {
+    "customInstallationSteps": [
+      {
+        "description": "Creates the AUS welcome history collection, indexes and customer key.",
+        "name": "Set up welcome delivery history",
+        "script": "./scripts/setup-welcome-history-db.ts"
       }
     ]
   },
