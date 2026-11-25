@@ -17,17 +17,35 @@ export default defineConfig({
         name: 'observer.customer_save_commit_after',
         label: 'Customer Saved',
         description: 'Checks whether a saved customer is newly created.',
-        fields: [{ name: 'email' }, { name: 'created_at' }, { name: 'updated_at' }],
+        fields: [{ name: 'id' }, { name: 'email' }, { name: 'created_at' }, { name: 'updated_at' }],
         runtimeActions: ['customer-welcome/handle-customer-created'],
       }],
     }],
   },
   businessConfig: {
-    schema: [{
-      name: 'welcome_service_base_url',
-      type: 'url',
-      label: 'Welcome Service Base URL',
-      default: 'https://aisenseapi.com/services/v1/webhook_capture',
+    schema: [
+      { name: 'welcome_service_base_url', type: 'url', label: 'Welcome Service Base URL', default: 'https://aisenseapi.com/services/v1/webhook_capture' },
+      { name: 'customer_key_pepper', type: 'password', label: 'Customer History Key', default: '' },
+    ],
+  },
+  installation: {
+    customInstallationSteps: [{
+      script: './scripts/setup-welcome-history-db.ts',
+      name: 'Set up welcome delivery history',
+      description: 'Creates the AUS welcome history collection, indexes and customer key.',
     }],
+  },
+  adminUi: {
+    customer: {
+      massActions: [{
+        type: 'view',
+        id: 'view-welcome-history',
+        label: 'Welcome delivery history',
+        description: 'Inspect delivery attempts for one customer.',
+        path: '#/welcome-history',
+        aclProtected: true,
+        selectionLimit: 1,
+      }],
+    },
   },
 });
