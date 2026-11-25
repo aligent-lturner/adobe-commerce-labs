@@ -1,4 +1,5 @@
 import { defineConfig } from '@adobe/aio-commerce-lib-app/config';
+import { MENU_SYSTEM } from '@adobe/aio-commerce-sdk/admin-ui/menu';
 
 export default defineConfig({
   metadata: {
@@ -25,7 +26,8 @@ export default defineConfig({
   businessConfig: {
     schema: [
       { name: 'welcome_service_base_url', type: 'url', label: 'Welcome Service Base URL', default: 'https://aisenseapi.com/services/v1/webhook_capture' },
-      { name: 'customer_key_pepper', type: 'password', label: 'Customer History Key', default: '' },
+      { name: 'customer_key_pepper', type: 'password', label: 'Customer History Key (do not edit; rotate using the app menu)', default: '' },
+      { name: 'customer_key_versions', type: 'password', label: 'History Key Versions (managed by the app; do not edit)', default: '' },
     ],
   },
   installation: {
@@ -36,6 +38,14 @@ export default defineConfig({
     }],
   },
   adminUi: {
+    menu: {
+      id: 'customer_welcome_rotation',
+      label: 'Welcome history key rotation',
+      description: 'Rotate the welcome history lookup key without losing older delivery attempts.',
+      parentMenu: MENU_SYSTEM,
+      aclProtected: true,
+    },
+    acl: [{ id: 'rotate_history_key', label: 'Rotate Welcome History Key' }],
     customer: {
       massActions: [{
         type: 'view',
