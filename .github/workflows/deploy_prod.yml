@@ -1,36 +1,96 @@
-name: AIO App CI
+name: AIO App Production
 
 on:
   release:
     types: [released]
+
+permissions:
+  contents: read
+  actions: read
+
 jobs:
-  deploy:
-    name: Deploy to Prod
-    runs-on: ${{ matrix.os }}
-    environment: production
-    strategy:
-      max-parallel: 1
-      matrix:
-        node-version: ['20']
-        os: [ubuntu-latest]
+  verify-release:
+    name: Require successful matching Stage evidence (no Production secrets)
+    if: github.event.release.prerelease == false
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout released tag
         uses: actions/checkout@v4
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
-      - name: npm install
-        run: npm i
-      - name: Setup CLI
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require released commit on main
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor HEAD origin/main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Reproducible install
+        run: npm ci
+      - name: YAML, unit and secret checks
+        run: |
+          node scripts/ci-verify.mjs yaml
+          node scripts/ci-verify.mjs secrets
+          npm test
+      - name: Generate and verify released App Management artifacts
+        run: |
+          npx aio-commerce-lib-app generate all
+          node scripts/ci-verify.mjs generated
+          git diff --exit-code -- app.commerce.manifest.json src/commerce-extensibility-1/.generated src/commerce-configuration-1/.generated
+      - name: Find successful Stage deploy of this exact main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy_stage.yml --branch main --commit "$GITHUB_SHA" --status success --json databaseId,headSha,headBranch,event,conclusion --limit 100)
+          STAGE_RUN_ID=$(node -e 'const rows=JSON.parse(process.argv[1]);const row=rows.find(r=>r.headSha===process.env.GITHUB_SHA&&r.headBranch==="main"&&r.event==="push"&&r.conclusion==="success");if(!row)process.exit(1);console.log(row.databaseId)' "$runs")
+          echo "STAGE_RUN_ID=$STAGE_RUN_ID" >> "$GITHUB_ENV"
+          gh run download "$STAGE_RUN_ID" --repo "$GITHUB_REPOSITORY" --name stage-release-evidence --dir release-evidence
+      - name: Verify matching Stage evidence
+        run: node scripts/ci-evidence.mjs verify
+
+  deploy:
+    name: Review and deploy to Production
+    needs: verify-release
+    if: github.event.release.prerelease == false
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: aio-workspace-production
+      cancel-in-progress: false
+    steps:
+      - name: Checkout verified release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Reproducible install
+        run: npm ci
+      - name: Recheck release before deploying
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node scripts/ci-verify.mjs yaml
+          node scripts/ci-verify.mjs secrets
+          npm test
+          npx aio-commerce-lib-app generate all
+          node scripts/ci-verify.mjs generated
+          git diff --exit-code -- app.commerce.manifest.json src/commerce-extensibility-1/.generated src/commerce-configuration-1/.generated
+      - name: Setup Adobe CLI
         uses: adobe/aio-cli-setup-action@1.3.0
         with:
-          os: ${{ matrix.os }}
+          os: ubuntu-latest
           version: 11.x.x
-      - name: Auth
+      - name: Adobe OAuth Server-to-Server (Production)
         uses: adobe/aio-apps-action@4.1.0
         with:
-          os: ${{ matrix.os }}
+          os: ubuntu-latest
           command: oauth_sts
           CLIENTID: ${{ secrets.CLIENTID }}
           CLIENTSECRET: ${{ secrets.CLIENTSECRET }}
@@ -38,14 +98,14 @@ jobs:
           TECHNICALACCOUNTEMAIL: ${{ secrets.TECHNICALACCEMAIL }}
           IMSORGID: ${{ secrets.IMSORGID }}
           SCOPES: ${{ secrets.SCOPES }}
-      - name: Build
+      - name: Adobe Production build
         env:
           AIO_RUNTIME_NAMESPACE: ${{ secrets.AIO_RUNTIME_NAMESPACE }}
         uses: adobe/aio-apps-action@4.1.0
         with:
-          os: ${{ matrix.os }}
+          os: ubuntu-latest
           command: build
-      - name: Deploy
+      - name: Adobe Production deploy
         env:
           AIO_RUNTIME_NAMESPACE: ${{ secrets.AIO_RUNTIME_NAMESPACE }}
           AIO_RUNTIME_AUTH: ${{ secrets.AIO_RUNTIME_AUTH }}
@@ -57,5 +117,5 @@ jobs:
           AIO_PROJECT_WORKSPACE_DETAILS_SERVICES: ${{ secrets.AIO_PROJECT_WORKSPACE_DETAILS_SERVICES }}
         uses: adobe/aio-apps-action@4.1.0
         with:
-          os: ${{ matrix.os }}
+          os: ubuntu-latest
           command: deploy
