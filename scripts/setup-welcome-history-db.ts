@@ -10,8 +10,7 @@ const scope = byCodeAndLevel('global', 'global');
 export default defineCustomInstallationStep({
   install: async (config, context) => {
     const params = context.params;
-    const key = params.AIO_COMMERCE_CONFIG_ENCRYPTION_KEY;
-    if (typeof key !== 'string' || !key || !config.businessConfig) {
+    if (typeof params.AIO_COMMERCE_CONFIG_ENCRYPTION_KEY !== 'string' || !params.AIO_COMMERCE_CONFIG_ENCRYPTION_KEY || !config.businessConfig) {
       context.logger.error({ phase: 'config', errorType: 'MissingConfiguration' });
       throw new Error('Configuration unavailable');
     }
@@ -26,10 +25,11 @@ export default defineCustomInstallationStep({
       const attempts = client.collection(collectionName);
       await attempts.createIndex({ attempt_id: 1 }, { name: 'uniq_attempt_id', unique: true });
       await attempts.createIndex({ customer_key: 1, event_time: -1 }, { name: 'customer_key_event_time_desc' });
+      await attempts.createIndex({ expires_at: 1 }, { name: 'rotation_lock_expiry', expireAfterSeconds: 0 });
       await initialize({ schema: config.businessConfig.schema });
-      const { config: existing } = await getConfigurationByKey('customer_key_pepper', scope, { encryptionKey: key });
+      const { config: existing } = await getConfigurationByKey('customer_key_pepper', scope, { encryptionKey: params.AIO_COMMERCE_CONFIG_ENCRYPTION_KEY });
       if (!existing?.value) {
-        await setConfiguration({ config: [{ name: 'customer_key_pepper', value: randomBytes(32).toString('hex') }] }, scope, { encryptionKey: key });
+        await setConfiguration({ config: [{ name: 'customer_key_pepper', value: randomBytes(32).toString('hex') }] }, scope, { encryptionKey: params.AIO_COMMERCE_CONFIG_ENCRYPTION_KEY });
       }
       return { status: 'success' };
     } catch (error) {
@@ -39,6 +39,6 @@ export default defineCustomInstallationStep({
       if (client) await client.close();
     }
   },
-  // Approved storage policy retains history across uninstall.
+  // Approved delivery history remains intact across uninstall.
   uninstall: async () => {},
 });
